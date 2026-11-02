@@ -39,7 +39,7 @@ const float KP = 15.0;           // gain de correction en position (1/s)
 const unsigned long TE_MS = 30;  // période d'échantillonnage (ms)
 
 // ----- Structure pour les mouvements reçus -----
-const int MAX_MOVEMENTS = 200;
+const int MAX_MOVEMENTS = 400;
 struct Movement {
   int etatStylo; // 1 pour baissé, 0 pour levé
   float x;
@@ -74,42 +74,46 @@ void echangerDonnees() {
     if (millis() - debutAttente > 20000) return; // Timeout de sécurité de 20 secondes
   }
 
-  String coordData = SERIAL_RLE_OUT.readStringUntil('\n');
-  coordData.trim();
-
-  if (coordData.length() > 0) {
-    analyserLigneCoordonnees(coordData);
-  }
+  lireCoordonnees();
 }
 
-// Fonction utilitaire pour parser la chaîne de coordonnées reçue
-void analyserLigneCoordonnees(String data) {
-  int currentIndex = 0;
-  int nextIndex = 0;
+// Lit etat:x,y:etat:x,y... caractère par caractère, sans garder toute la ligne en mémoire
+void lireCoordonnees() {
+  char champ[12];
+  byte n = 0;
+  byte etape = 0;  // 0 : état du stylo, 1 : x, 2 : y
+  int etatStylo = 0;
+  float x = 0;
 
-  while ((nextIndex = data.indexOf(':', currentIndex)) != -1 && nbMovements < MAX_MOVEMENTS) {
-    int etatStylo = data.substring(currentIndex, nextIndex).toInt();
-    currentIndex = nextIndex + 1;
+  unsigned long dernierOctet = millis();
+  while (millis() - dernierOctet < 1000) {
+    if (!SERIAL_RLE_OUT.available()) continue;
+    char c = SERIAL_RLE_OUT.read();
+    dernierOctet = millis();
 
-    nextIndex = data.indexOf(',', currentIndex);
-    if (nextIndex == -1) break;
-    float x = data.substring(currentIndex, nextIndex).toFloat();
-    currentIndex = nextIndex + 1;
-
-    // Le prochain délimiteur est soit ':' (séparateur d'élément) soit la fin de chaîne
-    nextIndex = data.indexOf(':', currentIndex);
-    float y = 0;
-    if (nextIndex != -1) {
-      y = data.substring(currentIndex, nextIndex).toFloat();
-      currentIndex = nextIndex + 1; // Prépare pour le prochain état_stylo
-    } else {
-      y = data.substring(currentIndex).toFloat();
+    if (c != ':' && c != ',' && c != '\n') {
+      if (c != '\r' && n < sizeof(champ) - 1) champ[n++] = c;
+      continue;
     }
 
-    movements[nbMovements].etatStylo = etatStylo;
-    movements[nbMovements].x = x;
-    movements[nbMovements].y = y;
-    nbMovements++;
+    champ[n] = '\0';
+    n = 0;
+    if (etape == 0) {
+      etatStylo = atoi(champ);
+      etape = 1;
+    } else if (etape == 1) {
+      x = atof(champ);
+      etape = 2;
+    } else {
+      if (nbMovements < MAX_MOVEMENTS) {
+        movements[nbMovements].etatStylo = etatStylo;
+        movements[nbMovements].x = x;
+        movements[nbMovements].y = atof(champ);
+        nbMovements++;
+      }
+      etape = 0;
+    }
+    if (c == '\n') return;
   }
 }
 
