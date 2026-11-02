@@ -11,10 +11,14 @@ DynamixelShield dxl;
 const int PIN_BUZZER = 48;
 const uint8_t IDS[] = {1, 2, 3};
 const int NB_IDS = 3;
-const long DELTA_MAX = 1024;         // un quart de tour au maximum par commande
+const long DELTA_MAX = 20480;        // 5 tours au maximum par commande
 const uint32_t VITESSE_TEST = 40;    // environ 9 tr/min
 const uint32_t ACCEL_TEST = 10;
-const unsigned long DUREE_MAX_MS = 4000;
+const long PAS_PAR_SECONDE = 625;    // VITESSE_TEST en pas par seconde
+const unsigned long MARGE_MS = 4000;
+const int COURANT_ARRET = 1100;      // mA, moteur bloqué proche de 1,47 A
+const int NB_MESURES_ARRET = 5;      // 0,5 s au-dessus de COURANT_ARRET
+const int NB_MESURES_IMMOBILE = 20;  // 2 s sans avancer
 const int MODE_POSITION = 3;
 
 void etat(uint8_t id) {
@@ -66,16 +70,37 @@ void deplacer(uint8_t id, long delta) {
 
   int courantMax = 0;
   long position = depart;
+  long positionPrec = depart;
+  int mesuresCourant = 0;
+  int mesuresImmobile = 0;
+  const char* fin = "duree";
+  unsigned long dureeMax = abs(delta) * 1000 / PAS_PAR_SECONDE + MARGE_MS;
   unsigned long t0 = millis();
-  while (millis() - t0 < DUREE_MAX_MS) {
+  while (millis() - t0 < dureeMax) {
     delay(100);
     position = dxl.getPresentPosition(id);
     int courant = abs((int)dxl.getPresentCurrent(id));
     if (courant > courantMax) courantMax = courant;
-    if (abs(but - position) <= 5) break;
+    if (abs(but - position) <= 5) {
+      fin = "but";
+      break;
+    }
+    mesuresCourant = courant > COURANT_ARRET ? mesuresCourant + 1 : 0;
+    if (mesuresCourant >= NB_MESURES_ARRET) {
+      fin = "courant";
+      break;
+    }
+    mesuresImmobile = abs(position - positionPrec) < 2 ? mesuresImmobile + 1 : 0;
+    positionPrec = position;
+    if (mesuresImmobile >= NB_MESURES_IMMOBILE) {
+      fin = "immobile";
+      break;
+    }
   }
 
-  Serial2.print("MOUVEMENT id=");
+  Serial2.print("MOUVEMENT fin=");
+  Serial2.print(fin);
+  Serial2.print(" id=");
   Serial2.print(id);
   Serial2.print(" depart=");
   Serial2.print(depart);
