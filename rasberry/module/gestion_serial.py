@@ -7,6 +7,5 @@ def lecture_serial(arduino:serial.Serial)->str:
         return donnee
 
 def ecriture_serial(arduino:serial.Serial, donnee:str)->None:
-    print(type(donnee))
-    arduino.write(donnee.encode("utf-8"))
+    arduino.write((donnee + "\n").encode("utf-8"))
     time.sleep(0.2)

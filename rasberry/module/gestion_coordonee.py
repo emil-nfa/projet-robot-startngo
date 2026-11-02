@@ -7,7 +7,7 @@ def coords_mvmt_vers_cercle(taille_rectangle_rle: tuple, coords_mvmt: list, coor
     Args:
         taille_rectangle_rle (tuple): (largeur, hauteur) du rectangle source.
         coords_mvmt (list): Liste de coordonnées sous forme de tuples ou listes [(x, y), ...].
-        coords_carre_cercle (list): Limites du carré par rapport au centre du cercle [xmin, ymin, xmax, ymax].
+        coords_carre_cercle (list): Les 4 coins [x, y] du carré par rapport au centre du cercle (y vers le haut).
         marge (float): Valeur du padding pour rétrécir le carré de tous les côtés.
 
     Returns:
@@ -15,8 +15,11 @@ def coords_mvmt_vers_cercle(taille_rectangle_rle: tuple, coords_mvmt: list, coor
     """
     w_src, h_src = taille_rectangle_rle
     
-    # Extraction des limites du carré relatives au centre du cercle
-    xmin, ymin, xmax, ymax = coords_carre_cercle
+    # Extraction des limites du carré relatives au centre du cercle (analyse_photo renvoie ses 4 coins)
+    xs = [coin[0] for coin in coords_carre_cercle]
+    ys = [coin[1] for coin in coords_carre_cercle]
+    xmin, xmax = min(xs), max(xs)
+    ymin, ymax = min(ys), max(ys)
     
     # Application de la MARGE (rétrécissement du carré)
     xmin_m = xmin + marge
@@ -38,7 +41,7 @@ def coords_mvmt_vers_cercle(taille_rectangle_rle: tuple, coords_mvmt: list, coor
         
         # Projection dans le carré réduit du cercle
         x_dest = xmin_m + (norm_x * w_dest)
-        y_dest = ymin_m + (norm_y * h_dest)
+        y_dest = ymax_m - (norm_y * h_dest)  # le haut de l'image RLE (y = 0) va en haut du carré
         
         coords_traduit.append((x_dest, y_dest,pt[2]))
         
@@ -51,12 +54,5 @@ def coords_cercle_vers_reel(coords_cercle:list, position_cercle:tuple):
     return(coords_traduit)
 
 def encoder_coords(list_coords)->str:
-    liste_propre=[0]
-    dernier_etat = 1
-    for coords in list_coords:
-        liste_propre.append(f"{coords[0]},{coords[1]}")
-        if coords[2] != dernier_etat:
-            dernier_etat = 1 - dernier_etat
-            list_coords.append(1-dernier_etat) 
-
-    return ":".join(liste_propre)
+    """Format lu par la Mega : etat:x,y:etat:x,y..., l'état du stylo vaut pour le trajet vers le point."""
+    return ":".join(f"{int(etat)}:{x:.2f},{y:.2f}" for x, y, etat in list_coords)

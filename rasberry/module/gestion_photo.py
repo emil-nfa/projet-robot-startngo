@@ -2,11 +2,17 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 
+NB_IMAGES_A_JETER = 5
+
 def prise_photo(cam,nom_photo)->None:
     if not cam.isOpened():
         raise SystemError ("Erreur : Impossible d'accéder à la webcam.")
     else:
+        for _ in range(NB_IMAGES_A_JETER): # images gardées en mémoire depuis l'ouverture de la caméra
+            cam.grab()
         ret, frame = cam.read()
+        if not ret:
+            raise SystemError ("Erreur : Impossible de lire une image de la webcam.")
         cv2.imwrite(nom_photo, frame)
 
 def analyse_photo_test(seuil_noir=50, pourcentage_requis=50.0)->bool:

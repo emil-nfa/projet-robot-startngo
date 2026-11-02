@@ -184,102 +184,43 @@ def find_black_neighbor(
         return test_neighbors([1, 2, 3, 4, 5, 6, 7, 8], current_pixel, matrix, visited_pixels)
 
 
-def trace_path(
-    matrix: Union[List[List[int]], np.ndarray],
-) -> Tuple[List[int], List[Tuple[int, int]], List[Tuple[int, int]]]:
-    """Calcule le trajet complet de traçage à travers la matrice."""
+def trace_strokes(matrix: Union[List[List[int]], np.ndarray]) -> List[List[Tuple[int, int]]]:
+    """Découpe la matrice en traits continus, chaque trait étant une liste de pixels (X, Y)."""
     height = len(matrix)
     width = len(matrix[0])
     visited_pixels: Dict[Tuple[int, int], int] = {(i, j): 0 for i in range(height) for j in range(width)}
-    path: List[int] = [0]
-    start_points: List[Tuple[int, int]] = []
-    pixel_list: List[Tuple[int, int]] = []
+    strokes: List[List[Tuple[int, int]]] = []
 
     for i in range(height):
         for j in range(width):
             if matrix[i][j] == 1 and visited_pixels[(i, j)] == 0:
-                start_point = (j, i)  # <-- Inversion ici : X=j (colonne), Y=i (ligne)
-                current_pixel = (i, j)  # La matrice garde (row, col) pour les recherches
-                visited_pixels[current_pixel] = 1
-                start_points.append(start_point)
-                pixel_list.append(current_pixel)
-
-                movement_direction, next_pixel = find_black_neighbor(current_pixel, matrix, visited_pixels)
-                path.append(movement_direction)
-
-                if next_pixel != 0 and isinstance(next_pixel, tuple):
-                    pixel_list.append(next_pixel)
+                visited_pixels[(i, j)] = 1
+                stroke = [(j, i)]
+                movement_direction, next_pixel = find_black_neighbor((i, j), matrix, visited_pixels)
+                while movement_direction != 0:
                     visited_pixels[next_pixel] = 1
-
-                while movement_direction != 0 and isinstance(next_pixel, tuple):
+                    stroke.append((next_pixel[1], next_pixel[0]))
                     movement_direction, next_pixel = find_black_neighbor(next_pixel, matrix, visited_pixels)
-                    path.append(movement_direction)
-                    if next_pixel != 0 and isinstance(next_pixel, tuple):
-                        pixel_list.append(next_pixel)
-                        visited_pixels[next_pixel] = 1
+                strokes.append(stroke)
 
-    return path, start_points, pixel_list
+    return strokes
 
 
-def simplify_path(path: List[int]) -> List[Tuple[int, int]]:
-    """Simplifie le trajet en regroupant les mouvements adjacents identiques (compteur, mouvement)."""
-    simplified_path: List[Tuple[int, int]] = []
-    counter = 1
-    for i in range(len(path)):
-        if i < (len(path) - 1) and path[i] == path[i + 1]:
-            counter += 1
-        else:
-            simplified_path.append((counter, path[i]))
-            counter = 1
-    return simplified_path
-
-
-def displacement_to_vector(movement: Tuple[int, int]) -> Tuple[int, int]:
-    """Convertit un mouvement élémentaire en vecteur de coordonnées (dx, dy) [X, Y]."""
-    step_count = movement[0]
-    direction = movement[1]
-    
-    # X = horizontal (col), Y = vertical (row)
-    vectors = {
-        1: (step_count, 0),      # Droite (X+)
-        2: (0, step_count),      # Bas (Y+) -> Ajustez à (0, -step_count) si l'axe Y est inversé
-        3: (-step_count, 0),     # Gauche (X-)
-        4: (0, -step_count),     # Haut (Y-) -> Ajustez à (0, step_count) si l'axe Y est inversé
-        5: (-step_count, -step_count), # Haut-Gauche
-        6: (step_count, -step_count),  # Haut-Droite
-        7: (step_count, step_count),   # Bas-Droite
-        8: (-step_count, step_count),  # Bas-Gauche
-    }
-    return vectors.get(direction, (0, 0))
-
-
-def simplify_path_to_coordinates(
-    simplified_path: List[Tuple[int, int]], start_points: List[Tuple[int, int]]
-) -> List[Tuple[int, int, int]]:
-    """Convertit un trajet simplifié en une liste de coordonnées absolues avec état du stylo."""
+def strokes_to_coordinates(strokes: List[List[Tuple[int, int]]]) -> List[Tuple[int, int, int]]:
+    """Convertit les traits en coordonnées (X, Y, stylo), le stylo valant pour le trajet vers le point :
+    stylo levé vers le début du trait, puis baissé jusqu'à sa fin, en ne gardant que les changements de direction."""
     coordinates_path: List[Tuple[int, int, int]] = []
-    pen_state = 1
-    remaining_start_points = start_points.copy()
-    for i in range(len(simplified_path)):
-        if i < len(simplified_path) - 2 and simplified_path[i + 1][1] == 0:
-            pen_state = 1
-            vector = displacement_to_vector(simplified_path[i])
-            last_x, last_y = (coordinates_path[-1][0], coordinates_path[-1][1]) if coordinates_path else (0, 0)
-            coordinates_path.append((last_x + vector[0], last_y + vector[1], pen_state))
-        elif simplified_path[i][1] == 0:
-            pen_state = 0
-            if remaining_start_points:
-                new_start = remaining_start_points[0] # Déjà au format (j, i) -> (X, Y)
-                remaining_start_points = remaining_start_points[1:]
-            else:
-                pen_state = 1
-                new_start = (0, 0)
-            coordinates_path.append((new_start[0], new_start[1], pen_state))
-        else:
-            vector = displacement_to_vector(simplified_path[i])
-            last_x, last_y = (coordinates_path[-1][0], coordinates_path[-1][1]) if coordinates_path else (0, 0)
-            coordinates_path.append((last_x + vector[0], last_y + vector[1], pen_state))
-
+    for stroke in strokes:
+        coordinates_path.append((stroke[0][0], stroke[0][1], 0))
+        if len(stroke) == 1:
+            coordinates_path.append((stroke[0][0], stroke[0][1], 1))  # pixel isolé : un point
+        for k in range(1, len(stroke)):
+            is_last = k == len(stroke) - 1
+            if is_last or (stroke[k][0] - stroke[k - 1][0], stroke[k][1] - stroke[k - 1][1]) != (
+                stroke[k + 1][0] - stroke[k][0],
+                stroke[k + 1][1] - stroke[k][1],
+            ):
+                coordinates_path.append((stroke[k][0], stroke[k][1], 1))
     return coordinates_path
 
 def afficher_coordonnees_gradient(coordonnees):
@@ -362,10 +303,7 @@ def image_vers_rle(chemin_image):
 def gestion_rle(string_rle):
     taille,matrix = string_to_matrix(string_rle)
     matrix_cleaned = remove_inner_fill(matrix)
-    movements, start_points, _ = trace_path(matrix_cleaned)
-    simplified = simplify_path(movements)
-    path_coords = simplify_path_to_coordinates(simplified, start_points)
-    return taille,path_coords[:-1]
+    return taille,strokes_to_coordinates(trace_strokes(matrix_cleaned))
 
 
 if __name__ == "__main__":

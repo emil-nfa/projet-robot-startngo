@@ -14,23 +14,6 @@ def log(*strings):
   print((string + "\n") * DEBUG, end="")
 
 
-def encoder_coords(list_coords) -> str:
-  log("[encodage]")
-  liste_propre = [1] 
-  dernier_etat = 1
-
-  for coords in list_coords:
-    liste_propre.append(f"{coords[0]},{coords[1]}")
-    if coords[2] != dernier_etat:
-      dernier_etat = 1 - dernier_etat
-      liste_propre.append(dernier_etat)
-    log(liste_propre)  # Fonctionne maintenant grâce au fix dans log()
-
-  log("[encodage fin]")
-
-  return ":".join(map(str, liste_propre))
-
-
 def main():
     log("[main]", "lancement du programme")
     arduino, cam = setup()
@@ -56,6 +39,7 @@ def main():
                     log("[prise photo]", "photo prise")
                 except Exception as e:
                     log("[prise photo]", str(e))
+                    closing(arduino, cam)
                     arduino, cam = setup()
                     continue
                 
@@ -87,13 +71,16 @@ def main():
 
                 try:
                     log("[ecriture serial] Début !")
+                    if len(coords_mvmt_reel) > MAX_POINTS:
+                        log("[ecriture serial] ATTENTION :", len(coords_mvmt_reel), "points, la Mega n'en garde que", MAX_POINTS)
                     string_serial = encoder_coords(coords_mvmt_reel)
                     log("[ecriture serial] [encodage]", string_serial)
                     ecriture_serial(arduino, string_serial)
                     log("[ecriture serial]" , "Liste des coordonnés de mouvement envoyé avec succés")
                 except Exception as e:
                     log("[ecriture serial]" , str(e))
-                    cam,arduino = setup()
+                    closing(arduino, cam)
+                    arduino, cam = setup()
                     continue
 
                 string_rle = None
