@@ -1,6 +1,7 @@
 // Test des moteurs piloté depuis la Pi sur Serial2 (/dev/ttyUSB0, 9600 bauds).
 // Commandes : "S" = état des moteurs ; "M <id> <delta>" = déplacement relatif en pas, puis couple coupé.
-// Le mode de chaque moteur n'est pas modifié. Couple coupé en dehors des déplacements.
+// "E <id>" = passe le moteur en position étendue (multi-tours), enregistré dans le moteur.
+// Le mode n'est modifié que par cette commande. Couple coupé en dehors des déplacements.
 
 #include <DynamixelShield.h>
 
@@ -135,6 +136,11 @@ void loop() {
   ligne.trim();
   if (ligne == "S") {
     for (int i = 0; i < NB_IDS; i++) etat(IDS[i]);
+  } else if (ligne.startsWith("E ")) {
+    uint8_t id = ligne.substring(2).toInt();
+    dxl.torqueOff(id);
+    dxl.setOperatingMode(id, OP_EXTENDED_POSITION);
+    etat(id);
   } else if (ligne.startsWith("M ")) {
     int espace = ligne.indexOf(' ', 2);
     if (espace == -1) {
