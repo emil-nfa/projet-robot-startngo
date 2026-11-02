@@ -98,6 +98,14 @@ def convert_to_real_coordinates(rect, circle_px, diametre_reel):
     
     return rect_corners_sorted, (cx_r, cy_r), (w_r, h_r), angle, rayon_reel
 
+def verifier_taille_feuille(size_real):
+    """Refuse une détection dont les dimensions ne ressemblent pas à un A4 (une photo sans feuille passe sinon)."""
+    petit, grand = sorted(size_real)
+    for mesure, attendu in ((petit, TAILLE_FEUILLE_LARGEUR), (grand, TAILLE_FEUILLE_LONGUEUR)):
+        if abs(mesure - attendu) > TOLERANCE_FEUILLE * attendu:
+            raise Exception(f"Erreur : feuille de {petit:.1f} x {grand:.1f} cm, ce n'est pas un A4.")
+
+
 def get_largest_aligned_square_inside(center_real, size_real, angle_deg):
     """
     Calcule le plus grand carré aligné sur les axes (X, Y)
@@ -233,6 +241,7 @@ def analyse_photo(image_path, diametre_reel):
 
     # Calculs géométriques
     rect_reels, center_real, size_real, angle_deg, rayon_reel = convert_to_real_coordinates(rect, circle_px, diametre_reel)
+    verifier_taille_feuille(size_real)
     square_reels, square_side = get_largest_aligned_square_inside(center_real, size_real, angle_deg)
 
     

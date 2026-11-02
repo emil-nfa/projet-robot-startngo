@@ -19,7 +19,7 @@ IMAGE_DEBUG = None # chemin d'une image de test, None = photo de la webcam
 #Constante physique
 
 DIAMETRE_CERCLE = 60
-POSITION_CENTRE_CERCLE = (15,15) # La position réel du centre du cercle par rapport au carré
+POSITION_CENTRE_CERCLE = (30,30) # Centre du cercle vu depuis l'origine du stylo, en cm : À MESURER sur le robot
 
 TAILLE_CARRE = 25
 
@@ -27,3 +27,7 @@ TAILLE_FEUILLE_LONGUEUR = 29.7
 TAILLE_FEUILLE_LARGEUR = 21
 
 MARGE_DESSIN = 2
+TOLERANCE_FEUILLE = 0.25 # écart accepté sur les dimensions mesurées de la feuille
+
+# Reprise
+NB_ESSAIS_PHOTO = 3

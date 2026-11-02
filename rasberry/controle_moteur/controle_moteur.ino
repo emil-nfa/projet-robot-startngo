@@ -1,6 +1,8 @@
 // Robot dessinateur CoreXY : reçoit des images RLE en continu sur Serial1, les renvoie sur Serial2,
 // puis reçoit et dessine les coordonnées correspondantes depuis Serial2.
-// Commande haute (jacobienne) sur l'Arduino, commande basse interne des Dynamixel XL330-M077-T
+// Commande haute (jacobienne) sur l'Arduino, commande basse interne des Dynamixel XL330.
+// Déroulé : image RLE sur Serial1 -> renvoi à la Pi sur Serial2 -> points reçus de la Pi -> bouton -> dessin -> retour à l'origine.
+// Origine = position du stylo à la mise sous tension : toujours démarrer au même coin, en dehors de la zone de 60 cm.
 
 #include <DynamixelShield.h>
 
@@ -11,12 +13,14 @@ DynamixelShield dxl;
 // ----- Ports Série -----
 #define SERIAL_RLE_IN   Serial1  // Réception RLE initial
 #define SERIAL_RLE_OUT  Serial2  // Renvoi RLE et réception des coordonnées
-const long BAUD_RATE_SERIAL = 9600;
+const long BAUD_RLE = 115200;     // programme rle du cours ; À CONFIRMER avec le câble du jury
+const long BAUD_PI = 9600;
+const unsigned long ATTENTE_PI_MS = 60000;   // photo + analyse sur la Pi
 
 // ----- Moteurs -----
-const uint8_t ID_1 = 1;          // moteur 1 (theta_1)
-const uint8_t ID_2 = 3;          // moteur 2 (theta_2)
-const uint8_t ID_STYLO = 2;      // moteur du stylo
+const uint8_t ID_1 = 2;          // moteur en bas à gauche (theta_1)
+const uint8_t ID_2 = 1;          // moteur en bas à droite (theta_2), À VÉRIFIER
+const uint8_t ID_STYLO = 3;      // moteur du stylo
 const int SENS_1 = 1;            // mettre -1 si le moteur 1 tourne dans le mauvais sens
 const int SENS_2 = 1;            // mettre -1 si le moteur 2 tourne dans le mauvais sens
 const float TICKS_PAR_RAD = 4096.0 / (2.0 * PI);   // XL330 : 4096 pas par tour
@@ -27,7 +31,7 @@ const float STYLO_BAS = 2348;
 const unsigned long ATTENTE_STYLO_MS = 300;   // temps pour lever ou baisser le stylo
 
 // ----- Robot -----
-const float R = 0.6;             // rayon de poulie (cm)
+const float R = 0.637;           // rayon primitif de la poulie GT2 20 dents (cm)
 
 // ----- Dessin -----
 const float V_DESSIN = 2.0;      // vitesse stylo baissé (cm/s)
@@ -58,6 +62,10 @@ float y_cible = 0;
 // ----- DEBUG -----
 const int ID_TONE = 48;
 
+// ----- Bouton de démarrage (entre PIN_BOUTON et GND) -----
+const bool UTILISER_BOUTON = false;   // passer à true une fois le bouton câblé
+const int PIN_BOUTON = 22;
+
 // ===================== Transfert RLE et Réception Coordonnées =====================
 
 void echangerDonnees() {
@@ -71,7 +79,7 @@ void echangerDonnees() {
   nbMovements = 0;
   unsigned long debutAttente = millis();
   while (!SERIAL_RLE_OUT.available()) {
-    if (millis() - debutAttente > 20000) return; // Timeout de sécurité de 20 secondes
+    if (millis() - debutAttente > ATTENTE_PI_MS) return;
   }
 
   lireCoordonnees();
@@ -177,10 +185,32 @@ void allerA(float xf, float yf, float v) {
 
 // ===================== Dessin =====================
 
+bool styloBaisse = true;   // force le premier lever au démarrage
+
 void stylo(bool baisse) {
+  if (baisse == styloBaisse) return;
+  styloBaisse = baisse;
   if (baisse) dxl.setGoalPosition(ID_STYLO, STYLO_BAS);
   else        dxl.setGoalPosition(ID_STYLO, STYLO_HAUT);
   delay(ATTENTE_STYLO_MS);
+}
+
+void attendreBouton() {
+  if (!UTILISER_BOUTON) return;
+  tone(ID_TONE, 660, 100);
+  while (digitalRead(PIN_BOUTON) == HIGH) {}
+  delay(50);
+}
+
+// Sans les 3 moteurs, le robot ne démarre pas : bip grave répété
+void verifierMoteurs() {
+  const uint8_t ids[] = {ID_1, ID_2, ID_STYLO};
+  for (int i = 0; i < 3; i++) {
+    while (!dxl.ping(ids[i])) {
+      tone(ID_TONE, 110, 300);
+      delay(1000);
+    }
+  }
 }
 
 void dessinerMouvements() {
@@ -200,11 +230,14 @@ void dessinerMouvements() {
 // ===================== Programme principal =====================
 
 void setup() {
-  SERIAL_RLE_IN.begin(BAUD_RATE_SERIAL);
-  SERIAL_RLE_OUT.begin(BAUD_RATE_SERIAL);
+  SERIAL_RLE_IN.begin(BAUD_RLE);
+  SERIAL_RLE_OUT.begin(BAUD_PI);
+  SERIAL_RLE_IN.setTimeout(1000);
+  pinMode(PIN_BOUTON, INPUT_PULLUP);
 
   dxl.begin(57600);
   dxl.setPortProtocolVersion(2.0);
+  verifierMoteurs();
 
   dxl.torqueOff(ID_1);
   dxl.torqueOff(ID_2);
@@ -231,7 +264,9 @@ void loop() {
     
     if (nbMovements > 0) {
       tone(ID_TONE, 880, 200);
+      attendreBouton();
       dessinerMouvements();   // Exécute les mouvements reçus
+      stylo(false);
       allerA(0, 0, V_VIDE);   // Retour au point de départ une fois le dessin terminé
     }
   }

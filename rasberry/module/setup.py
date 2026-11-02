@@ -6,6 +6,7 @@ from module.constante import *
 
 def setup()->tuple:
     arduino:serial.Serial = serial.Serial(PORT_ARDUINO, VITESSE, timeout=1)
+    arduino.reset_input_buffer()
     cam = cv2.VideoCapture(ID_CAM)
     return arduino,cam
 
