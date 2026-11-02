@@ -101,6 +101,8 @@ def convert_to_real_coordinates(rect, circle_px, diametre_reel):
 def verifier_taille_feuille(size_real):
     """Refuse une détection dont les dimensions ne ressemblent pas à un A4 (une photo sans feuille passe sinon)."""
     petit, grand = sorted(size_real)
+    if petit <= 0 or not 1.25 <= grand / petit <= 1.55:    # A4 : 1,414
+        raise Exception(f"Erreur : feuille de {petit:.1f} x {grand:.1f} cm, ce n'est pas un A4.")
     for mesure, attendu in ((petit, TAILLE_FEUILLE_LARGEUR), (grand, TAILLE_FEUILLE_LONGUEUR)):
         if abs(mesure - attendu) > TOLERANCE_FEUILLE * attendu:
             raise Exception(f"Erreur : feuille de {petit:.1f} x {grand:.1f} cm, ce n'est pas un A4.")

@@ -14,8 +14,9 @@ DynamixelShield dxl;
 #define SERIAL_RLE_IN   Serial1  // Réception RLE initial
 #define SERIAL_RLE_OUT  Serial2  // Renvoi RLE et réception des coordonnées
 const long BAUD_RLE = 115200;     // programme rle du cours ; À CONFIRMER avec le câble du jury
-const long BAUD_PI = 9600;
+const long BAUD_PI = 115200;
 const unsigned long ATTENTE_PI_MS = 60000;   // photo + analyse sur la Pi
+const long RLE_MIN_OCTETS = 7;               // plus petite image possible : 1:1:0:1
 
 // ----- Moteurs -----
 const uint8_t ID_1 = 2;          // moteur en bas à gauche (theta_1)
@@ -35,7 +36,7 @@ const float R = 0.637;           // rayon primitif de la poulie GT2 20 dents (cm
 
 // ----- Dessin -----
 const float V_DESSIN = 2.0;      // vitesse stylo baissé (cm/s)
-const float V_VIDE = 5.0;        // vitesse stylo levé (cm/s)
+const float V_VIDE = 3.5;        // vitesse stylo levé (cm/s) : environ 75 tr/min en diagonale, M288 limité vers 100 à vide
 const float TOLERANCE = 0.05;    // écart accepté en fin de déplacement (cm)
 
 // ----- Commande haute -----
@@ -43,11 +44,11 @@ const float KP = 15.0;           // gain de correction en position (1/s)
 const unsigned long TE_MS = 30;  // période d'échantillonnage (ms)
 
 // ----- Structure pour les mouvements reçus -----
-const int MAX_MOVEMENTS = 400;
+const int MAX_MOVEMENTS = 800;
 struct Movement {
-  int etatStylo; // 1 pour baissé, 0 pour levé
-  float x;
-  float y;
+  uint8_t etatStylo; // 1 pour baissé, 0 pour levé
+  int16_t x;         // centièmes de cm
+  int16_t y;
 };
 Movement movements[MAX_MOVEMENTS];
 int nbMovements = 0;
@@ -69,20 +70,36 @@ const int PIN_BOUTON = 22;
 // ===================== Transfert RLE et Réception Coordonnées =====================
 
 void echangerDonnees() {
-  String rleData = SERIAL_RLE_IN.readStringUntil('\n');
-  rleData.trim(); // Nettoie les éventuels retours chariots résiduels
+  while (SERIAL_RLE_OUT.available()) SERIAL_RLE_OUT.read();   // réponse tardive d'une image précédente
 
-  // 1) Renvoi immédiat de la chaîne RLE sur Serial2, suivie d'un retour à la ligne
-  SERIAL_RLE_OUT.println(rleData);
+  // 1) Renvoi de la chaîne RLE au fil de l'eau, sans la garder en mémoire (jusqu'à 8 Ko pour du 64 x 64)
+  long nbOctets = 0;
+  unsigned long dernierOctet = millis();
+  while (millis() - dernierOctet < 1000) {
+    if (!SERIAL_RLE_IN.available()) continue;
+    char c = SERIAL_RLE_IN.read();
+    dernierOctet = millis();
+    if (c == '\n') break;
+    if (c == '\r') continue;
+    SERIAL_RLE_OUT.write(c);
+    nbOctets++;
+  }
+  SERIAL_RLE_OUT.write('\n');
 
-  // 2) Attente et lecture de la ligne de coordonnées en retour sur Serial2
   nbMovements = 0;
+  if (nbOctets < RLE_MIN_OCTETS) return;   // parasite sur le câble, ce n'est pas une image
+
+  // 2) Attente de la ligne de coordonnées (ligne vide = la Pi abandonne cette image)
   unsigned long debutAttente = millis();
   while (!SERIAL_RLE_OUT.available()) {
     if (millis() - debutAttente > ATTENTE_PI_MS) return;
   }
 
   lireCoordonnees();
+}
+
+int16_t versCentiemes(float cm) {
+  return (int16_t)(cm * 100.0 + (cm < 0 ? -0.5 : 0.5));
 }
 
 // Lit etat:x,y:etat:x,y... caractère par caractère, sans garder toute la ligne en mémoire
@@ -115,8 +132,8 @@ void lireCoordonnees() {
     } else {
       if (nbMovements < MAX_MOVEMENTS) {
         movements[nbMovements].etatStylo = etatStylo;
-        movements[nbMovements].x = x;
-        movements[nbMovements].y = atof(champ);
+        movements[nbMovements].x = versCentiemes(x);
+        movements[nbMovements].y = versCentiemes(atof(champ));
         nbMovements++;
       }
       etape = 0;
@@ -216,8 +233,8 @@ void verifierMoteurs() {
 void dessinerMouvements() {
   for (int i = 0; i < nbMovements; i++) {
     bool baisser = (movements[i].etatStylo == 1);
-    float x = movements[i].x;
-    float y = movements[i].y;
+    float x = movements[i].x / 100.0;
+    float y = movements[i].y / 100.0;
 
     float vitesse = baisser ? V_DESSIN : V_VIDE;
     
@@ -232,7 +249,6 @@ void dessinerMouvements() {
 void setup() {
   SERIAL_RLE_IN.begin(BAUD_RLE);
   SERIAL_RLE_OUT.begin(BAUD_PI);
-  SERIAL_RLE_IN.setTimeout(1000);
   pinMode(PIN_BOUTON, INPUT_PULLUP);
 
   dxl.begin(57600);
@@ -245,6 +261,8 @@ void setup() {
   dxl.setOperatingMode(ID_1, OP_EXTENDED_POSITION);   
   dxl.setOperatingMode(ID_2, OP_EXTENDED_POSITION);
   dxl.setOperatingMode(ID_STYLO, OP_POSITION);
+  dxl.setGoalPosition(ID_1, dxl.getPresentPosition(ID_1));   // pas de saut à l'activation du couple
+  dxl.setGoalPosition(ID_2, dxl.getPresentPosition(ID_2));
   dxl.torqueOn(ID_1);
   dxl.torqueOn(ID_2);
   dxl.torqueOn(ID_STYLO);

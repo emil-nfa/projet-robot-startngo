@@ -47,8 +47,8 @@ def main():
     try:
         while True:
             string_rle = lecture_serial(arduino)
-            if not string_rle:
-                continue
+            if len(string_rle) < RLE_MIN_OCTETS:
+                continue  # parasite, la Mega ne répond rien non plus
             log("[lecture serial]", string_rle)
             try:
                 string_serial = calculer_coordonnees(cam, string_rle)
@@ -56,8 +56,8 @@ def main():
                 ecriture_serial(arduino, string_serial)
                 log("[main] coordonnees envoyees, en attente d'une nouvelle string RLE")
             except Exception as e:
-                # La Mega abandonne cette image après son délai d'attente
                 log("[main] image abandonnee :", str(e))
+                ecriture_serial(arduino, "")  # ligne vide : la Mega reprend tout de suite
     except KeyboardInterrupt:
         log("[main]", "Fin du programme !")
     finally:

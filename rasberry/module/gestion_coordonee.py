@@ -31,18 +31,19 @@ def coords_mvmt_vers_cercle(taille_rectangle_rle: tuple, coords_mvmt: list, coor
     w_dest = xmax_m - xmin_m
     h_dest = ymax_m - ymin_m
     
+    # Même échelle sur les 2 axes et dessin centré : une image non carrée n'est pas déformée
+    echelle = min(w_dest / w_src, h_dest / h_src)
+    x_depart = xmin_m + (w_dest - echelle * w_src) / 2
+    y_depart = ymax_m - (h_dest - echelle * h_src) / 2
+
     coords_traduit = []
     for pt in coords_mvmt:
         x_src, y_src = pt[0], pt[1]
-        
-        # Normalisation des coordonnées dans le rectangle source (entre 0 et 1)
-        norm_x = x_src / w_src if w_src > 0 else 0
-        norm_y = y_src / h_src if h_src > 0 else 0
-        
+
         # Projection dans le carré réduit du cercle
-        x_dest = xmin_m + (norm_x * w_dest)
-        y_dest = ymax_m - (norm_y * h_dest)  # le haut de l'image RLE (y = 0) va en haut du carré
-        
+        x_dest = x_depart + echelle * x_src
+        y_dest = y_depart - echelle * y_src  # le haut de l'image RLE (y = 0) va en haut du carré
+
         coords_traduit.append((x_dest, y_dest,pt[2]))
         
     return coords_traduit

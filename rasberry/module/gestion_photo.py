@@ -13,7 +13,8 @@ def prise_photo(cam,nom_photo)->None:
         ret, frame = cam.read()
         if not ret:
             raise SystemError ("Erreur : Impossible de lire une image de la webcam.")
-        cv2.imwrite(nom_photo, frame)
+        if not cv2.imwrite(nom_photo, frame):
+            raise SystemError ("Erreur : Impossible d'enregistrer la photo.")
 
 def analyse_photo_test(seuil_noir=50, pourcentage_requis=50.0)->bool:
     # Charger l'image en nuances de gris directement (0 = noir, 255 = blanc)

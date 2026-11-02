@@ -1,5 +1,6 @@
 """Module de gestion et de traitement d'images au format RLE pour le tracé de chemins."""
 
+import re
 from typing import Dict, List, Tuple, Union
 import numpy as np
 from PIL import Image, ImageDraw
@@ -11,28 +12,15 @@ DEBUG = True
 
 def string_to_matrix(rle_string: str) -> tuple:
     """Convertit une chaîne de caractères au format RLE en matrice binaire."""
-    elements = rle_string.split(":")
-
-    elements = [int(val) for val in elements]
-    width = elements.pop(0)
-    height = elements.pop(0)  # noqa: F841
+    # Comme stoi dans le programme rle du cours : on ignore ce qui n'est ni chiffre ni séparateur ($, #...)
+    elements = [int(val) for val in re.sub(r"[^0-9:]", "", rle_string).split(":") if val]
+    width, height, current_color = elements[0], elements[1], elements[2] % 2
+    if width <= 0 or height <= 0:
+        raise ValueError(f"Taille d'image invalide : {width} x {height}")
 
     pixel_list: List[int] = []
-    index = 0
-    current_color = elements.pop(0)
-    run_length = elements[index]
-
-    while index < len(elements):
-        if run_length == 0:
-            index += 1
-            current_color = (current_color + 1) % 2
-            if index != len(elements):
-                run_length = elements[index]
-        run_length -= 1
-        pixel_list.append(current_color)
-
-    if pixel_list:
-        pixel_list.pop()  # Retire le dernier élément superflu si présent
+    for i, run_length in enumerate(elements[3:]):
+        pixel_list.extend([current_color ^ (i % 2)] * run_length)
 
     # --- CORRECTION ROBUSTE : Ajustement et découpage propre en lignes égales ---
     target_size = width * height
@@ -184,6 +172,28 @@ def find_black_neighbor(
         return test_neighbors([1, 2, 3, 4, 5, 6, 7, 8], current_pixel, matrix, visited_pixels)
 
 
+def raccorder(stroke: List[Tuple[int, int]], matrix: Union[List[List[int]], np.ndarray]) -> List[Tuple[int, int]]:
+    """Prolonge le trait jusqu'au pixel noir déjà tracé qui touche sa fin, puis son début, pour ne pas laisser de trou."""
+    height = len(matrix)
+    width = len(matrix[0])
+
+    def voisin(pixel, exclus):
+        x, y = pixel
+        for dx, dy in ((1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < width and 0 <= ny < height and matrix[ny][nx] == 1 and (nx, ny) not in exclus:
+                return (nx, ny)
+        return None
+
+    fin = voisin(stroke[-1], stroke[-2:])
+    debut = voisin(stroke[0], stroke[:2])
+    if fin is not None:
+        stroke = stroke + [fin]
+    if debut is not None and len(stroke) > 1:
+        stroke = [debut] + stroke
+    return stroke
+
+
 def trace_strokes(matrix: Union[List[List[int]], np.ndarray]) -> List[List[Tuple[int, int]]]:
     """Découpe la matrice en traits continus, chaque trait étant une liste de pixels (X, Y)."""
     height = len(matrix)
@@ -201,6 +211,7 @@ def trace_strokes(matrix: Union[List[List[int]], np.ndarray]) -> List[List[Tuple
                     visited_pixels[next_pixel] = 1
                     stroke.append((next_pixel[1], next_pixel[0]))
                     movement_direction, next_pixel = find_black_neighbor(next_pixel, matrix, visited_pixels)
+                stroke = raccorder(stroke, matrix)
                 strokes.append(stroke)
 
     return strokes
